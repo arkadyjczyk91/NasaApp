@@ -3,15 +3,11 @@ import requests
 import json
 
 class NasaApiService:
-    """Service for interacting with the NASA Images API."""
-
     def __init__(self, on_result_callback, on_error_callback):
-        """Initialize with callbacks for results and errors."""
         self.on_result = on_result_callback
         self.on_error = on_error_callback
 
     def search_images(self, keyword, count=None, media_type="image"):
-        """Search for NASA images with the given parameters."""
         thread = threading.Thread(
             target=self._execute_search,
             args=(keyword, count, media_type, False)
@@ -21,7 +17,6 @@ class NasaApiService:
         return thread
 
     def search_album(self, album_name, count=None):
-        """Search for a NASA album with the given name."""
         thread = threading.Thread(
             target=self._execute_search,
             args=(album_name, count, None, True)
@@ -31,7 +26,6 @@ class NasaApiService:
         return thread
 
     def _execute_search(self, keyword, count, media_type, is_album):
-        """Execute the API request in a separate thread."""
         try:
             if is_album:
                 base_url = f"https://images-api.nasa.gov/album/{keyword}"
@@ -41,7 +35,6 @@ class NasaApiService:
                 params = {"q": keyword}
                 if media_type and media_type != "all":
                     params["media_type"] = media_type
-
             if count:
                 params["page_size"] = count
 
@@ -52,10 +45,8 @@ class NasaApiService:
             items = []
             if "collection" in data and "items" in data["collection"]:
                 items = data["collection"]["items"]
-
             items = items[:count] if count else items
 
-            # Prepare API log info
             api_log = {
                 "url": response.url,
                 "method": "GET",
@@ -63,7 +54,6 @@ class NasaApiService:
                 "params": params,
                 "response_snippet": json.dumps(data, indent=2)[:400]
             }
-
             self.on_result(items, api_log)
 
         except Exception as e:
