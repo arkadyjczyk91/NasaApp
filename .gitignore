@@ -1,0 +1,54 @@
+# Pliki bytecode Pythona
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Dystrybucja / pakowanie
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Środowiska wirtualne
+venv/
+env/
+ENV/
+.env
+
+# Katalogi i pliki IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Pliki baz danych
+*.db
+*.sqlite3
+
+# Logi i dane tymczasowe
+*.log
+*.tmp
+temp/
+logs/
+
+# Pliki konfiguracyjne lokalne
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Pliki systemowe
+.DS_Store
+Thumbs.db
