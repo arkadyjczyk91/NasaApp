@@ -11,7 +11,6 @@ from ui.rendering import render_text
 from utils.helpers import shorten_url
 from ui.components.media_player import MediaPlayer
 
-
 class DetailScreen:
     """Screen for displaying detailed information about a NASA item."""
 
@@ -33,7 +32,7 @@ class DetailScreen:
         self.detail_zoom = 1.0
         self.detail_img_offset = [0, 0]
         self.asset_selected = 0
-        self.previous_asset_selected = -1  # Track changes in selection
+        self.previous_asset_selected = -1
         self.current_preview_url = None
         self.detail_desc_scroll = None
         self.detail_files_scroll = None
@@ -43,6 +42,8 @@ class DetailScreen:
         self.video_thumbnail = None
         self.preview_loading = False
         self.preview_surface = None
+
+        # Unified media player
         self.media_player = MediaPlayer(screen, fonts, audio_player, video_player)
 
     def set_detail_item(self, item, detail_fetcher_class):
@@ -89,6 +90,7 @@ class DetailScreen:
             pygame.event.post(pygame.event.Event(pygame.USEREVENT, {}))
 
         detail_fetcher_class(nasa_id, is_video, on_asset, on_metadata, on_captions).start()
+
 
     def _filter_asset_files(self, files):
         """Filter out metadata files from the asset files."""
@@ -164,149 +166,96 @@ class DetailScreen:
         files = self._filter_asset_files(
             self.detail_asset.get("collection", {}).get("items", []) if self.detail_asset else [])
 
-        # Obsługa klawisza F11 do przełączania trybu pełnoekranowego
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_F11:
-            pygame.display.toggle_fullscreen()
+        # Obsługa klawiszy globalnych najpierw
+        if event.type == pygame.KEYDOWN:
+            # F11 dla trybu pełnoekranowego
+            if event.key == pygame.K_F11:
+                pygame.event.post(pygame.event.Event(pygame.USEREVENT, {"action": "toggle_fullscreen"}))
+                return True
+
+            # Global exit key
+            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                # If media is playing, stop it instead of exiting
+                if self.media_player.is_playing:
+                    self.media_player._stop_playback()
+                    return True
+                return False  # Signal to exit detail mode
+
+        # Handle media player controls
+        if self.media_player.handle_event(event):
             return True
 
-        # Handle scrollable area events
+        # Obsługa klawiszy nawigacyjnych tylko gdy nie są aktywne media
+        if event.type == pygame.KEYDOWN and not self.media_player.is_playing:
+            # Zoom controls
+            if event.key in (pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS):
+                self.detail_zoom = min(self.detail_zoom + 0.2, 4.0)
+                return True
+            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                self.detail_zoom = max(self.detail_zoom - 0.2, 0.4)
+                return True
+
+            # Image panning
+            elif event.key == pygame.K_LEFT:
+                self.detail_img_offset[0] -= 40
+                return True
+            elif event.key == pygame.K_RIGHT:
+                self.detail_img_offset[0] += 40
+                return True
+
+            # File navigation
+            elif event.key == pygame.K_UP and files:
+                prev_idx = self.asset_selected
+                self.asset_selected = (self.asset_selected - 1) % len(files)
+                if prev_idx != self.asset_selected:
+                    return True
+            elif event.key == pygame.K_DOWN and files:
+                prev_idx = self.asset_selected
+                self.asset_selected = (self.asset_selected + 1) % len(files)
+                if prev_idx != self.asset_selected:
+                    return True
+
+            # Image position (only if not navigating files)
+            elif event.key == pygame.K_UP and not files:
+                self.detail_img_offset[1] -= 40
+                return True
+            elif event.key == pygame.K_DOWN and not files:
+                self.detail_img_offset[1] += 40
+                return True
+
+            # File actions
+            elif event.key == pygame.K_RETURN and files:
+                url = files[self.asset_selected].get("href")
+                if url:
+                    webbrowser.open(url)
+                    self.status = f"Opened in browser: {url}"
+                return True
+            elif event.key == pygame.K_p and files:
+                url = files[self.asset_selected].get("href")
+                if url:
+                    result = self.play_media(url)
+                    if result:
+                        self.status = result
+                return True
+            elif event.key == pygame.K_s:
+                self.audio_player.stop()
+                self.video_player.stop()
+                self.status = "Playback stopped"
+                return True
+            elif event.key == pygame.K_n:
+                captloc = self.detail_captions.get("location")
+                if captloc:
+                    webbrowser.open(captloc)
+                    self.status = f"Opening captions: {captloc}"
+                return True
+
+        # Handle scrollable area events after keyboard navigation
         if self.detail_desc_scroll and self.detail_desc_scroll.handle_event(event):
             return True
         if self.detail_files_scroll and self.detail_files_scroll.handle_event(event):
             return True
         if self.detail_meta_scroll and self.detail_meta_scroll.handle_event(event):
             return True
-
-        if event.type == pygame.KEYDOWN:
-            # Global exit key
-            if event.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
-                # If media is playing, stop it instead of exiting
-                if self.video_player.is_playing or self.audio_player.playing:
-                    self.video_player.stop()
-                    self.audio_player.stop()
-                    return True
-                return False  # Signal to exit detail mode
-
-            # Video & Audio playback controls
-            if self.video_player.is_playing:
-                # Video controls
-                if event.key == pygame.K_SPACE:
-                    if self.video_player.is_playing:
-                        self.video_player.pause()
-                    else:
-                        self.video_player.resume()
-                    return True
-                elif event.key in [pygame.K_s, pygame.K_ESCAPE]:
-                    self.video_player.stop()
-                    return True
-                elif event.key in [pygame.K_RIGHT]:
-                    # Skip forward 10 seconds
-                    pos = min(1.0, self.video_player.get_position() + 0.1)
-                    self.video_player.set_position(pos)
-                    return True
-                elif event.key in [pygame.K_LEFT]:
-                    # Skip backward 10 seconds
-                    pos = max(0.0, self.video_player.get_position() - 0.1)
-                    self.video_player.set_position(pos)
-                    return True
-
-            elif self.audio_player.playing:
-                # Audio controls
-                if event.key == pygame.K_SPACE:
-                    if self.audio_player.paused:
-                        self.audio_player.resume()
-                    else:
-                        self.audio_player.pause()
-                    return True
-                elif event.key in [pygame.K_s, pygame.K_ESCAPE]:
-                    self.audio_player.stop()
-                    return True
-                elif event.key in [pygame.K_RIGHT]:
-                    # Skip forward 10 seconds
-                    pos = min(1.0, self.audio_player.get_position() + 0.1)
-                    self.audio_player.set_position(pos)
-                    return True
-                elif event.key in [pygame.K_LEFT]:
-                    # Skip backward 10 seconds
-                    pos = max(0.0, self.audio_player.get_position() - 0.1)
-                    self.audio_player.set_position(pos)
-                    return True
-
-            else:
-                # Normal navigation
-                # Zoom controls
-                if event.key in (pygame.K_PLUS, pygame.K_KP_PLUS, pygame.K_EQUALS):
-                    self.detail_zoom = min(self.detail_zoom + 0.2, 4.0)
-                    return True
-                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    self.detail_zoom = max(self.detail_zoom - 0.2, 0.4)
-                    return True
-
-                # Scrolling
-                elif event.key == pygame.K_PAGEUP:
-                    if self.detail_desc_scroll:
-                        self.detail_desc_scroll.scroll_up(30)
-                    return True
-                elif event.key == pygame.K_PAGEDOWN:
-                    if self.detail_desc_scroll:
-                        self.detail_desc_scroll.scroll_down(30)
-                    return True
-
-                # Image panning and file navigation
-                elif event.key == pygame.K_LEFT:
-                    self.detail_img_offset[0] -= 40
-                    return True
-                elif event.key == pygame.K_RIGHT:
-                    self.detail_img_offset[0] += 40
-                    return True
-                elif event.key == pygame.K_UP:
-                    if files:
-                        # Change selection
-                        prev_idx = self.asset_selected
-                        self.asset_selected = (self.asset_selected - 1) % len(files)
-                        # We'll load the preview in update method
-                        if prev_idx != self.asset_selected:
-                            return True
-                    else:
-                        self.detail_img_offset[1] -= 40
-                        return True
-                elif event.key == pygame.K_DOWN:
-                    if files:
-                        # Change selection
-                        prev_idx = self.asset_selected
-                        self.asset_selected = (self.asset_selected + 1) % len(files)
-                        # We'll load the preview in update method
-                        if prev_idx != self.asset_selected:
-                            return True
-                    else:
-                        self.detail_img_offset[1] += 40
-                        return True
-
-                # File actions
-                elif event.key == pygame.K_RETURN and files:
-                    url = files[self.asset_selected].get("href")
-                    if url:
-                        webbrowser.open(url)
-                        self.status = f"Opened in browser: {url}"
-                    return True
-                elif event.key == pygame.K_p and files:
-                    url = files[self.asset_selected].get("href")
-                    if url:
-                        result = self.play_media(url)
-                        if result:
-                            self.status = result
-                    return True
-                elif event.key == pygame.K_s:
-                    self.audio_player.stop()
-                    self.video_player.stop()
-                    self.status = "Playback stopped"
-                    return True
-                elif event.key == pygame.K_n:
-                    captloc = self.detail_captions.get("location")
-                    if captloc:
-                        webbrowser.open(captloc)
-                        self.status = f"Opening captions: {captloc}"
-                    return True
 
         return True  # Stay in detail mode
 
@@ -366,11 +315,6 @@ class DetailScreen:
             response = requests.get(url)
             img = Image.open(BytesIO(response.content))
             img = img.convert("RGBA")
-
-            # Store in image cache
-            self.image_service.image_cache.put(url, None)  # Reserve cache slot
-
-            # We'll resize in the drawing function based on the display area
             mode = img.mode
             size = img.size
             data = img.tobytes()
@@ -397,9 +341,7 @@ class DetailScreen:
 
     def draw(self):
         """Draw the detail screen."""
-        # Update time-based elements first
         self.update()
-
         self.screen.fill(BLACK)
         panel_margin = 30
         panel_width = self.WIDTH - 2 * panel_margin
@@ -433,13 +375,14 @@ class DetailScreen:
         if files and 0 <= self.asset_selected < len(files):
             selected_url = files[self.asset_selected].get("href")
 
-        # Check what's currently displayed
-        if self.preview_loading:
+        # Check if media player is currently playing and should overlay the controls
+        if self.media_player.is_playing and self.media_player.media_type in ("video", "audio"):
+            self.media_player.draw(preview_area)
+        elif self.preview_loading:
             loading_text = self.fonts["medium"].render("Loading preview...", True, BLUE)
             self.screen.blit(loading_text, (preview_area.centerx - loading_text.get_width() // 2,
                                             preview_area.centery - loading_text.get_height() // 2))
         elif selected_url and selected_url == self.current_preview_url:
-            # Draw the selected file preview
             self._draw_selected_file_preview(selected_url, preview_area)
         else:
             # Default preview (original asset)
@@ -464,18 +407,14 @@ class DetailScreen:
         right_y = y
         right_h = left_h
 
-        # Description panel
         self._draw_description_panel(right_x, right_y, right_width, right_h * 0.4, d)
         right_y += right_h * 0.4 + 15
 
-        # Files panel
         self._draw_files_panel(right_x, right_y, right_width, right_h * 0.25)
         right_y += right_h * 0.25 + 15
 
-        # Metadata panel
         self._draw_metadata_panel(right_x, right_y, right_width, right_h - right_y + y)
 
-        # Navigation instructions
         self._draw_navigation_help()
 
     def _draw_selected_file_preview(self, url, area):
@@ -716,7 +655,9 @@ class DetailScreen:
     def _draw_active_video_player(self, url, area):
         """Draw an active video player with controls."""
         # Draw video frame area
-        video_area = pygame.Rect(area.x + 20, area.y + 20, area.width - 40, area.height - 100)
+        video_area = pygame.Rect(area.x, area.y, area.width, area.height)  # Używamy wartości z obiektu area
+        if self.media_player.media_type == "video" and self.media_player.is_playing:
+            self.media_player.draw(video_area)
         pygame.draw.rect(self.screen, (0, 0, 0), video_area)
         pygame.draw.rect(self.screen, BLUE, video_area, 2)
 

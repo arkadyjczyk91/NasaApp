@@ -8,6 +8,7 @@ from services.api_service import NasaApiService
 from services.image_service import ImageService, DetailFetcher
 from services.audio_service import AudioPlayer
 from services.video_service import VideoPlayer
+from ui.components.media_player import MediaPlayer
 from ui.screens.search_screen import SearchScreen
 from ui.screens.detail_screen import DetailScreen
 
@@ -26,13 +27,7 @@ class NasaApp:
         self.WIDTH, self.HEIGHT = self.screen.get_size()
         pygame.display.set_caption("NASA Media Explorer")
 
-        # Services
-        self.api_service = NasaApiService()
-        self.image_service = ImageService()
-        self.audio_player = AudioPlayer()
-        self.video_player = VideoPlayer()
-
-        # Font setup
+        # Font setup - przesuń to przed utworzeniem media_player
         self.fonts = {
             "font": pygame.font.SysFont("Arial", 28),
             "small": pygame.font.SysFont("Consolas", 17),
@@ -44,6 +39,13 @@ class NasaApp:
             "detail_asset": pygame.font.SysFont("Consolas", 15),
             "label": pygame.font.SysFont("Arial", 18, bold=True)
         }
+
+        # Services
+        self.api_service = NasaApiService()
+        self.image_service = ImageService()
+        self.video_player = VideoPlayer(size=(640, 360))
+        self.audio_player = AudioPlayer()
+        self.media_player = MediaPlayer(self.screen, self.fonts, self.audio_player, self.video_player)
 
         # State
         self.lock = threading.Lock()
@@ -118,16 +120,14 @@ class NasaApp:
 
         if event.type == pygame.KEYDOWN:
             # Toggle fullscreen
-            # W metodzie handle_common_events po utworzeniu nowego obiektu screen
             if event.key == pygame.K_F11:
                 try:
                     self.fullscreen = not self.fullscreen
 
                     if self.fullscreen:
-                        # Używamy bardziej bezpośredniego podejścia do pełnego ekranu
-                        info = pygame.display.Info()
+                        # Używamy tylko podstawowej flagi FULLSCREEN bez dodatkowych flagg
                         self.screen = pygame.display.set_mode(
-                            (info.current_w, info.current_h),
+                            (0, 0),  # Pygame automatycznie wybierze rozdzielczość ekranu
                             pygame.FULLSCREEN
                         )
                     else:
@@ -150,9 +150,6 @@ class NasaApp:
                     # Wymuszenie aktualizacji ekranu
                     pygame.display.flip()
 
-                    # Krótka pauza dla stabilizacji
-                    time.sleep(0.1)
-
                     return True
                 except Exception as e:
                     print(f"Błąd przełączania trybu: {e}")
@@ -160,10 +157,12 @@ class NasaApp:
                     self.fullscreen = False
                     self.screen = pygame.display.set_mode(self.default_size, pygame.RESIZABLE)
                     self.WIDTH, self.HEIGHT = self.screen.get_size()
+                    # Aktualizacja referencji
                     self.search_screen.screen = self.screen
                     self.search_screen.update_dimensions(self.WIDTH, self.HEIGHT)
                     self.detail_screen.screen = self.screen
-                    self.detail_screen.WIDTH = self.HEIGHT
+                    self.detail_screen.WIDTH = self.WIDTH
+                    self.detail_screen.HEIGHT = self.HEIGHT
                     return True
 
             # Force windowed mode

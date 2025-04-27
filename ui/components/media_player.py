@@ -1,8 +1,10 @@
-import pygame
 import math
-import time
 import threading
-from app.config import BLACK, BLUE, WHITE
+import time
+
+import pygame
+
+from app.config import BLUE, WHITE
 
 
 class MediaPlayer:
@@ -319,19 +321,10 @@ class MediaPlayer:
 
         # Draw the media content
         if self.media_type == "video" and self.video_player and self.video_player.is_playing:
-            # Draw video content
-            pygame.draw.rect(self.screen, (0, 0, 0), area)
-
-            # Draw video frame if available
-            # Create a black surface for the video
-            video_surface = pygame.Surface((area.width, area.height - self.control_bar_height))
-
-            # Tell the video player to render to this surface
-            self.video_player.render_to_surface(video_surface)
-
-            # Blit the video surface to the screen
-            self.screen.blit(video_surface, (area.x, area.y))
-
+            # Draw video frame using in-memory VLC surface
+            video_surf = self.video_player.get_surface()
+            scaled = pygame.transform.smoothscale(video_surf, (area.width, area.height - self.control_bar_height))
+            self.screen.blit(scaled, (area.x, area.y))
         elif self.media_type == "audio":
             # For audio, draw a visualizer
             self._draw_audio_visualizer(area)
@@ -360,6 +353,7 @@ class MediaPlayer:
         # Draw controls if visible
         if self.controls_visible:
             self._draw_controls(area)
+
 
     def _draw_controls(self, area):
         """Draw the player controls."""
